@@ -1,185 +1,271 @@
 import numpy as np
 import math 
 import matplotlib.pyplot as plt
+import time
 
-cities_list = ['MUMBAI','NEW DELHI','KOLKATA','CHENNAI','BANGLORE','HYDRABAD','JAIPUR','AHMEDABAD','CHANDIGARH','KOCHI']
-n = np.random.randint(2,11)      #random function is used to randomly select the cities from the list
-cities = cities_list[:n]
+# =====================================================================
+# CONFIGURATION & PARAMETERS
+# =====================================================================
+# List of available cities
+CITIES_LIST = [
+    'CITY_1', 'CITY_2', 'CITY3', 'CITY4', 'CITY5', 
+    'CITY6', 'CITY7', 'CITY8', 'CITY9', 'CITY10'
+]
 
-x = []   #it stores the coordinates of the cities
-y = []
+# Number of cities to select (randomly between 5 and 10 for a meaningful problem size)
+NUM_CITIES = np.random.randint(5, 11)
+SELECTED_CITIES = CITIES_LIST[:NUM_CITIES]
 
-for i in range(n):
-    x_axis = np.random.randint(1,100)          #this is used for the random assignment of the coordinates of each city
-    y_axis = np.random.randint(1,100)
-    x.append(x_axis)         #appending the values of x_axis and y_axis in x,y
-    y.append(y_axis)
-    
-print(x)
-print(y)
+# ACO Hyperparameters
+ALPHA = 1.0        # Pheromone importance parameter
+BETA = 2.0         # Heuristic/visibility importance parameter
+RHO = 0.2          # Pheromone evaporation rate (0 < RHO < 1)
+Q = 100.0          # Pheromone constant deposited by ants
+NUM_ANTS = 15      # Number of ants in each iteration
+ITERATIONS = 50    # Number of optimization generations/iterations
 
-print()
-distance = []         #empty list distance created 
+# Coordinate bounds for random city generation
+MIN_COORD = 5
+MAX_COORD = 95
 
-# this code calculates the distance between each city using euclidean distance formula 
-for i in range(0,len(cities)):
-    for j in range(0,len(cities)):
-        distance.append((((x[j]-x[i])**2 + (y[j] - y[i])**2)**0.5))   #euclidean distance formula
-distance = np.array(distance)
-distance = np.reshape(distance,(n,n))           # reshape is used to create a 2d array and the distances between each cities
-print('distance between all the nodes: \n',distance)
+# =====================================================================
+# CLASS DEFINITIONS
+# =====================================================================
 
-pheromene = np.ones((n,n))         #pheromene initialization with function np.ones (np.ones assign 1 to each edges)
+class City:
+    """Represents a city with a name and 2D coordinates."""
+    def __init__(self, name: str, x: float, y: float):
+        self.name = name
+        self.x = x
+        self.y = y
 
-sum_pheromene = np.zeros((n,n))
+    def distance_to(self, other: 'City') -> float:
+        """Calculates the Euclidean distance to another city."""
+        return math.hypot(self.x - other.x, self.y - other.y)
 
-alpha = 1   # alpha is the parameter to control the influence of pheromene
-beta = 2    #beta is the paramenter to control the influence of visibility
+    def __repr__(self) -> str:
+        return f"{self.name}({self.x}, {self.y})"
 
-eta = np.zeros((n,n))    #initization of eta
-rho = 0.2     #this is the pheromene evapouration
 
-# Pheromone evaporation coefficient 0 < rho < 1 determines how quick ants can forget found paths 
-#and avoid unlimited pheromone accumulation
+class Ant:
+    """Represents a single ant that constructs a TSP tour."""
+    def __init__(self, start_city_idx: int):
+        self.start_city_idx = start_city_idx
+        self.current_city_idx = start_city_idx
+        self.tour = [start_city_idx]
+        self.tour_length = 0.0
 
-number_of_ants = 10      
+    def reset(self, start_city_idx: int):
+        """Resets the ant state for a new iteration."""
+        self.start_city_idx = start_city_idx
+        self.current_city_idx = start_city_idx
+        self.tour = [start_city_idx]
+        self.tour_length = 0.0
 
-total_distance = []          #this list is used to append the distances travelled by each ant
-
-__ = 1
-while(__ <= number_of_ants):
-#initial pheromene
-#------------------------------------------------probabiltiy--------------------------------------------
-#this code is used to calculate the eta(visibility of the edges between the cities)
-
-    for i in range(0,n):
-        for j in range(0,n):
-            if(distance[i][j] == 0):
-                eta[i][j] = 0
-            else:
-                eta[i][j] = (1/distance[i][j])    #visibility formula is 1/distance between the two cities
-
-    sum_pheromene_eta =  np.sum((((pheromene)**alpha)*((eta)**beta)))
-
-#-------------------------------------------probability of path i,j----------------------------------------
-#this function calculcates the probability of choosing the next city from the current city 
-
-    def probability(alpha,beta,i,j):
-        prob = (((pheromene[i][j])**alpha)*((eta[i][j])**beta))/(sum_pheromene_eta)
-        return prob
+    def select_next_city(self, pheromone: np.ndarray, eta: np.ndarray, alpha: float, beta: float) -> int:
+        """
+        Chooses the next city to visit using standard ACO probabilistic transition rules.
+        Only unvisited cities are considered, eliminating the potential for deadlocks.
+        """
+        n = pheromone.shape[0]
+        unvisited = [i for i in range(n) if i not in self.tour]
         
-#-------------------------------------------probability of everynode------------------------------------------        
-# this code is used to append the probability of the path
+        # If all cities visited, return to start
+        if not unvisited:
+            return self.start_city_idx
 
-    print()
-    prob = []   #list to store the probability of the path
-    for i in range(0,n):
-        for j in range(0,n):
-            temp = 0
-            temp = probability(1,2,i,j)
-            prob.append(temp)
+        # Compute transition probabilities for unvisited neighbors
+        probabilities = []
+        for city_idx in unvisited:
+            tau = pheromone[self.current_city_idx][city_idx]
+            visibility = eta[self.current_city_idx][city_idx]
+            # Transition formula weight: (tau^alpha) * (eta^beta)
+            probabilities.append((tau ** alpha) * (visibility ** beta))
 
-    prob = np.array(prob)
-    prob = prob.reshape(n,n)
-    print('probability of all the node: \n',prob)
-    
-    #as we move from the current node the probability changes as the pheromene is updates between the cities
-
-#------------------------------------------------cumulative probability---------------------------------------------
-    temp = 0
-    axis = 0 
-    
-    a = [x[0]]        #a is the list used to append the x coordinates of the next cities travelled by the ant
-    b = [y[0]]         #b is the list to append the y coordinates
-
-    axis_list = [0]   #this list stores the position of cities travelled by the salesman
-    
-    _ = 0               
-    while(_ <= n):        #this loop calculates the axis and the coordinates of sequence that the salesman uses to travel from
-        temp = 0          #one city to other
-        prob1 = []
-        for i in range(n):
-            temp = temp + prob[(axis+1)-1:(axis+1)][0][i]   #this code is to calculate the probability of each city from the initial city
-            prob1.append(temp)                              #temp is used to calaculate the cumulative probability
-        random_nno = np.random.uniform(0,np.max(prob1))     #random function is an approach to select the next 
-        temp = 0
-        for i in range(n):
-            if(prob1[i] > random_nno):
-                seal_prob = prob1[i]                        #the next bigger value to random number in prob1 will be the next city from the current
-                break
-
-        c = np.where(prob1 == seal_prob)                     #c stores the index of the next city
-        axis = c[0][0]
-
-        if(np.isin(axis,axis_list) == False):                #append the axis in axis_list only when its not present in axis_list
-            axis_list.append(axis)
-            a.append(x[axis])
-            b.append(y[axis])
-            _ += 1
-
-            if(len(axis_list) == n):
-                break
+        total_weight = sum(probabilities)
+        if total_weight == 0:
+            # Fallback to uniform distribution if pheromones are zeroed out
+            probabilities = [1.0 / len(unvisited)] * len(unvisited)
         else:
-            continue
-    print('x axis value',a)
-    print('y axis value',b)
+            probabilities = [p / total_weight for p in probabilities]
 
-# ---------------------------------------total path distance---------------------------------------------
-    
-    # this code calculates the total distance travelled by the salesman
-    temp = 0
-    for i in range(1,len(a)):
-        temp = temp + ((a[i] - a[i-1])**2 + (b[i] - b[i-1])**2)**0.5    #the distance is calculated using euclidean disance formula
+        # Select next city using roulette-wheel choice
+        return np.random.choice(unvisited, p=probabilities)
 
-    for i  in range(len(axis_list)):
-        print('-',cities[axis_list[i]],end = '')
-    print('- MUMBAI')
-    print()
-    
-    total_distance1 = temp
-    print('---------------------------total distance-----------------------------',total_distance1)
-    total_distance.append(total_distance1)  #the distances travelled by each sales is appended in list total_distance
-    
-    # this codes plot the graph of the cities travelled by the salesman
-    x1_axis = []
-    y1_axis = []
-    for i in range(len(axis_list)):
-        x1_axis.append(x[axis_list[i]])
-        y1_axis.append(y[axis_list[i]])
-        #print()
+    def construct_tour(self, pheromone: np.ndarray, eta: np.ndarray, alpha: float, beta: float, distance_matrix: np.ndarray):
+        """Builds a complete tour through all cities and returns to the start."""
+        n = pheromone.shape[0]
+        while len(self.tour) < n:
+            next_city = self.select_next_city(pheromone, eta, alpha, beta)
+            self.tour_length += distance_matrix[self.current_city_idx][next_city]
+            self.tour.append(next_city)
+            self.current_city_idx = next_city
+        
+        # Complete the loop: return to starting city
+        self.tour_length += distance_matrix[self.current_city_idx][self.start_city_idx]
+        self.tour.append(self.start_city_idx)
 
-        plt.scatter(x1_axis,y1_axis,s = 40)    #display the points of the city 
-        plt.text(x[i] ,y[i] ,cities[i],fontsize = 10)   #displays the name of the city 
-        plt.plot([x1_axis[i-1],x1_axis[i]],[y1_axis[i-1],y1_axis[i]],linewidth = 0.7);   #connects the edges of the cities 
+
+class AntColonyOptimizer:
+    """Manages the ACO simulation, pheromones, and optimization loop."""
+    def __init__(self, cities: list[City], num_ants: int, alpha: float, beta: float, rho: float, Q: float):
+        self.cities = cities
+        self.num_ants = num_ants
+        self.alpha = alpha
+        self.beta = beta
+        self.rho = rho
+        self.Q = Q
+        self.num_cities = len(cities)
+        
+        # Precompute distance and visibility (1/distance) matrices
+        self.distance_matrix = np.zeros((self.num_cities, self.num_cities))
+        self.eta = np.zeros((self.num_cities, self.num_cities))
+        for i in range(self.num_cities):
+            for j in range(self.num_cities):
+                if i != j:
+                    dist = self.cities[i].distance_to(self.cities[j])
+                    self.distance_matrix[i][j] = dist
+                    self.eta[i][j] = 1.0 / dist
+                else:
+                    self.distance_matrix[i][j] = 0.0
+                    self.eta[i][j] = 0.0
+
+        # Initialize pheromones to 1.0 on all edges
+        self.pheromone = np.ones((self.num_cities, self.num_cities))
+        
+        # Best tour tracking
+        self.global_best_tour = None
+        self.global_best_distance = float('inf')
+
+    def run_iteration(self) -> tuple[list[int], float]:
+        """Runs a single generation/iteration of ants constructing tours."""
+        # Initialize ants at random starting cities
+        ants = [Ant(start_city_idx=np.random.randint(0, self.num_cities)) for _ in range(self.num_ants)]
+        
+        # 1. Construct tours for all ants in parallel/sequence
+        for ant in ants:
+            ant.construct_tour(self.pheromone, self.eta, self.alpha, self.beta, self.distance_matrix)
+            
+            # Keep track of global best solution
+            if ant.tour_length < self.global_best_distance:
+                self.global_best_distance = ant.tour_length
+                self.global_best_tour = list(ant.tour)
+
+        # 2. Evaporate pheromones on all edges
+        self.pheromone *= (1.0 - self.rho)
+        
+        # 3. Deposit new pheromones symmetrically along the constructed tours
+        for ant in ants:
+            contribution = self.Q / ant.tour_length
+            for idx in range(len(ant.tour) - 1):
+                i = ant.tour[idx]
+                j = ant.tour[idx + 1]
+                self.pheromone[i][j] += contribution
+                self.pheromone[j][i] += contribution
+                
+        # Enforce a small lower bound for pheromones to keep paths active
+        self.pheromone = np.maximum(self.pheromone, 1e-4)
+        
+        return self.global_best_tour, self.global_best_distance
+
+
+# =====================================================================
+# MAIN SIMULATION RUNNER
+# =====================================================================
+
+if __name__ == '__main__':
+    print("Initializing cities...")
+    # Generate coordinates for selected cities
+    cities = []
+    x_coords = []
+    y_coords = []
+    for name in SELECTED_CITIES:
+        x = np.random.randint(MIN_COORD, MAX_COORD)
+        y = np.random.randint(MIN_COORD, MAX_COORD)
+        cities.append(City(name, x, y))
+        x_coords.append(x)
+        y_coords.append(y)
+
+    print(f"Number of cities: {NUM_CITIES}")
+    for idx, c in enumerate(cities):
+        print(f"  City {idx}: {c}")
+
+    # Initialize the ACO optimizer
+    optimizer = AntColonyOptimizer(
+        cities=cities,
+        num_ants=NUM_ANTS,
+        alpha=ALPHA,
+        beta=BETA,
+        rho=RHO,
+        Q=Q
+    )
+
+    print("\nStarting optimization simulation...")
     
-    plt.plot([x1_axis[n-1],x1_axis[0]],[y1_axis[n-1],y1_axis[0]],linewidth = 0.7); 
-    plt.xlim(0,100)
-    plt.ylim(0,100)
+    # Set up matplotlib for interactive, non-blocking plotting
+    plt.ion()
+    fig, ax = plt.subplots(figsize=(9, 7))
+    
+    best_distances_history = []
+    
+    for i in range(1, ITERATIONS + 1):
+        # Run one iteration of the optimizer
+        best_tour, best_distance = optimizer.run_iteration()
+        best_distances_history.append(best_distance)
+        
+        # Clear the plot axis for redraw
+        ax.clear()
+        
+        # 1. Draw pheromone trails in green (opacity represents strength)
+        max_pher = np.max(optimizer.pheromone)
+        for u in range(NUM_CITIES):
+            for v in range(u + 1, NUM_CITIES):
+                p_val = optimizer.pheromone[u][v]
+                line_alpha = min(0.6 * (p_val / max_pher), 0.6)  # Caps opacity at 0.6
+                if line_alpha > 0.02:
+                    ax.plot(
+                        [cities[u].x, cities[v].x], 
+                        [cities[u].y, cities[v].y], 
+                        color='green', 
+                        alpha=line_alpha, 
+                        linewidth=1.2 + 2.0 * (p_val / max_pher)
+                    )
+
+        # 2. Draw the best tour in bright blue
+        for idx in range(len(best_tour) - 1):
+            c1 = cities[best_tour[idx]]
+            c2 = cities[best_tour[idx + 1]]
+            ax.plot([c1.x, c2.x], [c1.y, c2.y], color='#1f77b4', linewidth=2.5, zorder=3)
+            
+        # 3. Draw cities as red dots
+        ax.scatter(x_coords, y_coords, color='red', s=60, edgecolors='black', zorder=4)
+        
+        # 4. Annotate city names
+        for idx, city in enumerate(cities):
+            ax.text(city.x + 1.5, city.y + 1.5, city.name, fontsize=10, fontweight='bold', zorder=5)
+
+        ax.set_xlim(0, 100)
+        ax.set_ylim(0, 100)
+        ax.set_title(f"Ant Colony Optimization for TSP\nIteration {i}/{ITERATIONS} | Best Distance: {best_distance:.2f} km")
+        ax.set_xlabel("X Coordinates")
+        ax.set_ylabel("Y Coordinates")
+        ax.grid(True, linestyle='--', alpha=0.5)
+
+        # Draw frame and pause slightly to animate
+        fig.canvas.draw()
+        fig.canvas.flush_events()
+        time.sleep(0.08)
+
+    # Turn off interactive plotting mode so the final figure stays open
+    plt.ioff()
+    
+    # Print results to console
+    print("\n------------------ Optimization Complete ------------------")
+    print(f"Optimal path length: {optimizer.global_best_distance:.2f} km")
+    path_names = [cities[idx].name for idx in optimizer.global_best_tour]
+    print("Optimal path found:")
+    print(" -> ".join(path_names))
+    print("-----------------------------------------------------------")
+    
+    # Display the final static plot
     plt.show()
-
-
-#this codes updates the pheromene of the edges treavelled by the sales man 
-#from city(axis_list[i-1]) to city(axis_lis[i])
-
-    for i in range(1,len(axis_list)):
-        
-        #sum_pheromene is  the summition of all the pheromenes 
-        
-        sum_pheromene[axis_list[i-1]][axis_list[i]] = sum_pheromene[axis_list[i-1]][axis_list[i]] 
-        + (pheromene[axis_list[i-1]][axis_list[i]]/total_distance)
-        
-        #the below code updates the pheromene of the edge treavelled by the salesman 
-
-        pheromene[axis_list[i-1]][axis_list[i]] = (1 - rho)*pheromene[axis_list[i-1]][axis_list[i]] 
-        + sum_pheromene[axis_list[i-1]][axis_list[i]]
-
-    pheromene[axis_list[n-1]][axis_list[0]] = (1 - rho)*pheromene[axis_list[n-1]][axis_list[0]] + sum_pheromene[axis_list[n-1]][axis_list[0]]
-
-    print(pheromene)
-
-    __ += 1
-    
-print()
-print(total_distance)
-print(' the minimum distance is:',np.min(total_distance))  #find the shortest and the most minimal distance travelled by the sales 
-                                                           # traversing all the cities
