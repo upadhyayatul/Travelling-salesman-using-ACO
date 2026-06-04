@@ -58,13 +58,27 @@ Here, $L_k$ is the total tour length of ant $k$, and $Q$ is a constant parameter
 
 ---
 
-## 🏗️ Code Architecture
+## 🏗️ Project Structure & Architecture
 
-The implementation in `travelling salesman.py` is structured into three primary classes:
+The project has been restructured into a modular Python package layout:
 
-1. **`City`**: Represents a city's coordinates and name, and calculates the Euclidean distance to other cities.
-2. **`Ant`**: Manages state for an individual ant (current location, list of visited cities, tour length) and implements the transition rules to construct a complete tour.
-3. **`AntColonyOptimizer`**: Coordinates the entire optimization process. It computes the distance/visibility matrices, maintains the pheromone matrix, runs iterations, evaporates/deposits pheromones, and tracks the global best solution.
+```text
+Travelling-salesman-using-ACO/
+├── .gitignore
+├── README.md
+├── requirements.txt
+└── src/
+    └── travelling_salesman/
+        ├── __init__.py
+        ├── core.py          # Contains City, Ant, and AntColonyOptimizer classes
+        └── main.py          # Entrypoint script (configuration, run loop, visualization)
+```
+
+The core codebase is divided into modular components:
+1. **`City`** (in `core.py`): Represents a city's coordinates and name, and calculates the Euclidean distance to other cities.
+2. **`Ant`** (in `core.py`): Manages state for an individual ant and implements the transition rules to construct a complete tour.
+3. **`AntColonyOptimizer`** (in `core.py`): Coordinates the entire optimization process. It computes the distance/visibility matrices, maintains the pheromone matrix, runs iterations, evaporates/deposits pheromones, and tracks the global best solution.
+4. **`main.py`**: Configures the simulation parameters, generates cities, runs the optimization loop, and orchestrates the Matplotlib GUI drawing.
 
 ---
 
@@ -79,7 +93,7 @@ The project includes an interactive Matplotlib visualization that updates dynami
 
 ## ⚙️ Configuration & Hyperparameters
 
-You can tune the hyperparameters at the top of the `travelling salesman.py` script:
+You can tune the hyperparameters at the top of the `src/travelling_salesman/main.py` script:
 
 ```python
 ALPHA = 1.0        # Pheromone importance
@@ -97,14 +111,15 @@ ITERATIONS = 50    # Number of optimization generations
 ### 📋 Prerequisites
 Ensure you have Python 3 and the required libraries installed:
 ```bash
-pip install numpy matplotlib
+pip install -r requirements.txt
 ```
 
 ### 🏃 Running the Code
 Execute the script directly from your terminal:
 ```bash
-python "travelling salesman.py"
+python src/travelling_salesman/main.py
 ```
+
 
 ---
 
